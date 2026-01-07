@@ -1,5 +1,5 @@
 import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
-import { findGame, generateDirectUrls, fetchNbaGameId, fetchMlbGameId, type GameInfo } from "./sportsApi";
+import { findGame, generateDirectUrls, fetchNbaGameId, fetchMlbGameId, searchPlayerTeam, type GameInfo } from "./sportsApi";
 
 export interface IStorage {
   generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
@@ -79,12 +79,28 @@ function generateFallbackLinks(query: SearchQuery, leagues: string[]): BoxScoreL
 
 export class MemStorage implements IStorage {
   async generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult> {
-    // Use teamName to detect league and find game; fall back to playerName for search terms
-    const searchTerm = query.teamName || query.playerName || "";
+    let teamNameToUse = query.teamName || "";
+    let resolvedPlayerTeam: { playerName: string; teamName: string; league: string } | null = null;
+    
+    // If no team name provided but player name is, look up the player's team
+    if (!teamNameToUse && query.playerName) {
+      const playerTeam = await searchPlayerTeam(query.playerName);
+      if (playerTeam) {
+        teamNameToUse = playerTeam.teamName;
+        resolvedPlayerTeam = {
+          playerName: playerTeam.playerName,
+          teamName: playerTeam.teamName,
+          league: playerTeam.league,
+        };
+      }
+    }
+    
+    // Use teamName to detect league and find game
+    const searchTerm = teamNameToUse || query.playerName || "";
     const leagues = detectLeague(searchTerm);
     
-    // Try to find the game using sports APIs (only works if teamName is provided)
-    const game = query.teamName ? await findGame(query.teamName, query.gameDate, leagues) : null;
+    // Try to find the game using sports APIs
+    const game = teamNameToUse ? await findGame(teamNameToUse, query.gameDate, leagues) : null;
     
     let links: BoxScoreLink[] = [];
     
@@ -176,7 +192,7 @@ export class MemStorage implements IStorage {
         provider: "SofaScore",
         providerType: "third-party",
         league: game.league,
-        url: `https://www.sofascore.com/search?q=${encodeURIComponent(query.teamName)}`,
+        url: `https://www.sofascore.com/search?q=${encodeURIComponent(teamNameToUse || query.playerName)}`,
         description: "Search SofaScore for detailed match statistics",
         linkType: "search"
       });
@@ -193,14 +209,20 @@ export class MemStorage implements IStorage {
       day: "numeric"
     });
     
+    // Include resolved player team info in matchInfo if we looked it up
+    const displayTeamName = resolvedPlayerTeam 
+      ? `${resolvedPlayerTeam.teamName} (from ${resolvedPlayerTeam.playerName})`
+      : query.teamName;
+    
     return {
       query,
       links,
       matchInfo: {
         playerName: query.playerName,
-        teamName: query.teamName,
+        teamName: displayTeamName,
         gameDate: query.gameDate,
-        formattedDate
+        formattedDate,
+        ...(resolvedPlayerTeam && { resolvedFromPlayer: true }),
       }
     };
   }
