@@ -32,6 +32,7 @@ import { searchQuerySchema, type SearchQuery, type SearchResult, type BoxScoreLi
 
 function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) => void }) {
   const [copied, setCopied] = useState(false);
+  const isDirect = link.linkType === "direct";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(link.url);
@@ -42,19 +43,35 @@ function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) 
 
   return (
     <div 
-      className="flex items-center justify-between gap-4 p-4 rounded-lg bg-muted/50 hover-elevate active-elevate-2"
+      className={cn(
+        "flex items-center justify-between gap-4 p-4 rounded-lg hover-elevate active-elevate-2",
+        isDirect ? "bg-green-500/5 border border-green-500/20" : "bg-muted/50"
+      )}
       data-testid={`link-card-${link.id}`}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-background flex items-center justify-center border border-border">
-          <span className="text-xs font-semibold text-muted-foreground uppercase">
+        <div className={cn(
+          "flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center border",
+          isDirect ? "bg-green-500/10 border-green-500/30" : "bg-background border-border"
+        )}>
+          <span className={cn(
+            "text-xs font-semibold uppercase",
+            isDirect ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+          )}>
             {link.league}
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-sm truncate" data-testid={`text-provider-${link.id}`}>
-            {link.provider}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-medium text-sm truncate" data-testid={`text-provider-${link.id}`}>
+              {link.provider}
+            </p>
+            {isDirect && (
+              <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-700 dark:text-green-300">
+                Direct Link
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground truncate">
             {link.description}
           </p>
@@ -101,12 +118,21 @@ function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url
         </p>
       </div>
 
-      <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/50 text-sm">
-        <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-        <p className="text-muted-foreground">
-          These links open search pages on each provider. Click any link to find the box score for this game.
-        </p>
-      </div>
+      {result.links.some(l => l.linkType === "direct") ? (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-green-500/10 text-sm border border-green-500/20">
+          <Check className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+          <p className="text-green-700 dark:text-green-300">
+            Game found! Direct links to box scores are available below.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/50 text-sm">
+          <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <p className="text-muted-foreground">
+            No game found for this date. Search links are provided to help you find the box score.
+          </p>
+        </div>
+      )}
 
       {officialLinks.length > 0 && (
         <div>

@@ -1,4 +1,5 @@
 import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
+import { findGame, generateDirectUrls, type GameInfo } from "./sportsApi";
 
 export interface IStorage {
   generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
@@ -41,129 +42,24 @@ function detectLeague(teamName: string): string[] {
   return leagues;
 }
 
-function generateLinks(query: SearchQuery, leagues: string[]): BoxScoreLink[] {
+function generateFallbackLinks(query: SearchQuery, leagues: string[]): BoxScoreLink[] {
   const links: BoxScoreLink[] = [];
   const displayDate = formatDateForDisplay(query.gameDate);
   const searchQuery = encodeURIComponent(`${query.teamName} ${query.playerName} ${displayDate} box score`);
-  const teamQuery = encodeURIComponent(`${query.teamName} ${displayDate}`);
   
   leagues.forEach(league => {
     const leagueUpper = league.toUpperCase();
-    const leagueSearchQuery = encodeURIComponent(`${query.teamName} ${displayDate} box score`);
     
-    // Official league site search pages - these work reliably
-    switch (league) {
-      case "nba":
-        links.push({
-          id: `nba-official`,
-          provider: "NBA.com",
-          providerType: "official",
-          league: "NBA",
-          url: `https://www.nba.com/search?filters=&q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
-          description: "Search NBA.com for box score and game stats",
-          linkType: "search"
-        });
-        break;
-      case "mlb":
-        links.push({
-          id: `mlb-official`,
-          provider: "MLB.com",
-          providerType: "official",
-          league: "MLB",
-          url: `https://www.mlb.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate + " box score")}`,
-          description: "Search MLB.com for Gameday and stats",
-          linkType: "search"
-        });
-        break;
-      case "nfl":
-        links.push({
-          id: `nfl-official`,
-          provider: "NFL.com",
-          providerType: "official",
-          league: "NFL",
-          url: `https://www.nfl.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
-          description: "Search NFL.com for game center and stats",
-          linkType: "search"
-        });
-        break;
-      case "nhl":
-        links.push({
-          id: `nhl-official`,
-          provider: "NHL.com",
-          providerType: "official",
-          league: "NHL",
-          url: `https://www.nhl.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
-          description: "Search NHL.com for game center",
-          linkType: "search"
-        });
-        break;
-      case "mls":
-        links.push({
-          id: `mls-official`,
-          provider: "MLSsoccer.com",
-          providerType: "official",
-          league: "MLS",
-          url: `https://www.mlssoccer.com/search/#q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
-          description: "Search MLS for match results",
-          linkType: "search"
-        });
-        break;
-    }
-    
-    // ESPN search - reliable third party
+    // ESPN search as fallback
     links.push({
-      id: `espn-${league}`,
-      provider: "ESPN",
+      id: `espn-${league}-search`,
+      provider: "ESPN (Search)",
       providerType: "third-party",
       league: leagueUpper,
       url: `https://www.espn.com/search/_/q/${encodeURIComponent(query.teamName + " " + displayDate + " " + leagueUpper)}`,
-      description: `Search ESPN for ${leagueUpper} box score and recap`,
+      description: `Search ESPN for ${leagueUpper} box score`,
       linkType: "search"
     });
-  });
-  
-  // Yahoo Sports search
-  links.push({
-    id: `yahoo-sports`,
-    provider: "Yahoo Sports",
-    providerType: "third-party",
-    league: leagues[0]?.toUpperCase() || "ALL",
-    url: `https://sports.yahoo.com/search?q=${searchQuery}`,
-    description: "Search Yahoo Sports for game summary",
-    linkType: "search"
-  });
-  
-  // CBS Sports search
-  links.push({
-    id: `cbs-sports`,
-    provider: "CBS Sports",
-    providerType: "third-party",
-    league: leagues[0]?.toUpperCase() || "ALL",
-    url: `https://www.cbssports.com/search/?q=${searchQuery}`,
-    description: "Search CBS Sports for box score",
-    linkType: "search"
-  });
-  
-  // SofaScore search - reliable for all sports
-  links.push({
-    id: `sofascore`,
-    provider: "SofaScore",
-    providerType: "third-party",
-    league: leagues[0]?.toUpperCase() || "ALL",
-    url: `https://www.sofascore.com/search?q=${encodeURIComponent(query.teamName)}`,
-    description: "Search SofaScore for detailed match statistics",
-    linkType: "search"
-  });
-  
-  // FlashScore search
-  links.push({
-    id: `flashscore`,
-    provider: "FlashScore",
-    providerType: "third-party",
-    league: leagues[0]?.toUpperCase() || "ALL",
-    url: `https://www.flashscore.com/search/?q=${encodeURIComponent(query.teamName)}`,
-    description: "Search FlashScore for live scores and results",
-    linkType: "search"
   });
   
   // Google search as reliable fallback
@@ -183,7 +79,40 @@ function generateLinks(query: SearchQuery, leagues: string[]): BoxScoreLink[] {
 export class MemStorage implements IStorage {
   async generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult> {
     const leagues = detectLeague(query.teamName);
-    const links = generateLinks(query, leagues);
+    
+    // Try to find the game using sports APIs
+    const game = await findGame(query.teamName, query.gameDate, leagues);
+    
+    let links: BoxScoreLink[] = [];
+    
+    if (game) {
+      // We found the game - generate direct URLs with real game IDs
+      const directUrls = generateDirectUrls(game);
+      links = directUrls.map((url, index) => ({
+        id: `${url.provider.toLowerCase().replace(/\s+/g, "-")}-${index}`,
+        provider: url.provider,
+        providerType: url.providerType,
+        league: url.league,
+        url: url.url,
+        description: url.description,
+        linkType: "direct" as const
+      }));
+      
+      // Add some search fallbacks too
+      const displayDate = formatDateForDisplay(query.gameDate);
+      links.push({
+        id: "sofascore-search",
+        provider: "SofaScore",
+        providerType: "third-party",
+        league: game.league,
+        url: `https://www.sofascore.com/search?q=${encodeURIComponent(query.teamName)}`,
+        description: "Search SofaScore for detailed match statistics",
+        linkType: "search"
+      });
+    } else {
+      // No game found - generate search-based fallback links
+      links = generateFallbackLinks(query, leagues);
+    }
     
     const gameDate = new Date(query.gameDate);
     const formattedDate = gameDate.toLocaleDateString("en-US", {
