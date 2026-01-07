@@ -1,5 +1,5 @@
 import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
-import { findGame, generateDirectUrls, fetchNbaGameId, type GameInfo } from "./sportsApi";
+import { findGame, generateDirectUrls, fetchNbaGameId, fetchMlbGameId, type GameInfo } from "./sportsApi";
 
 export interface IStorage {
   generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
@@ -133,6 +133,39 @@ export class MemStorage implements IStorage {
           url: `https://www.basketball-reference.com/boxscores/${brDate}0${homeAbbr}.html`,
           description: `Basketball Reference box score - ${game.awayTeam} @ ${game.homeTeam}`,
           linkType: "direct"
+        });
+      }
+      
+      // For MLB games, add MLB.com links
+      if (game.league === "MLB") {
+        const [year, month, day] = query.gameDate.split("-");
+        
+        // Try to fetch MLB game ID for direct box score link
+        const mlbGame = await fetchMlbGameId(query.gameDate, game.homeTeam, game.awayTeam);
+        
+        if (mlbGame) {
+          // MLB.com box score URL format: https://www.mlb.com/gameday/{away-slug}-vs-{home-slug}/{year}/{month}/{day}/{gamePk}/final/box
+          links.unshift({
+            id: "mlb-com-boxscore",
+            provider: "MLB.com",
+            providerType: "official",
+            league: "MLB",
+            url: `https://www.mlb.com/gameday/${mlbGame.awaySlug}-vs-${mlbGame.homeSlug}/${year}/${month}/${day}/${mlbGame.gamePk}/final/box`,
+            description: `Official MLB box score - ${mlbGame.awayTeam} @ ${mlbGame.homeTeam}`,
+            linkType: "direct"
+          });
+        }
+        
+        // Baseball Reference direct link using date-based URL
+        const brDate = `${year}${month}${day}`;
+        links.push({
+          id: "bref-boxscore",
+          provider: "Baseball Reference",
+          providerType: "third-party",
+          league: "MLB",
+          url: `https://www.baseball-reference.com/boxes/?date=${year}-${month}-${day}`,
+          description: `Baseball Reference games on ${formatDateForDisplay(query.gameDate)}`,
+          linkType: "search"
         });
       }
       

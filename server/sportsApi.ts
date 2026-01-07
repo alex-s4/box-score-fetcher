@@ -298,6 +298,103 @@ export async function fetchNbaGameId(date: string, homeTeamAbbr: string, awayTea
   }
 }
 
+// Slugify team name for MLB URLs (e.g., "Blue Jays" -> "blue-jays")
+export function slugifyTeamName(teamName: string): string {
+  return teamName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .trim();
+}
+
+// Extract team nickname from full name (e.g., "Toronto Blue Jays" -> "Blue Jays")
+function extractMlbNickname(fullName: string): string {
+  // Common city prefixes to remove
+  const cityPatterns = [
+    /^(Los Angeles|New York|San Francisco|San Diego|St\. Louis|Kansas City|Tampa Bay|Texas|Arizona|Colorado|Minnesota|Oakland|Seattle|Baltimore|Boston|Chicago|Cincinnati|Cleveland|Detroit|Houston|Miami|Milwaukee|Philadelphia|Pittsburgh|Toronto|Washington|Atlanta)\s+/i
+  ];
+  
+  let nickname = fullName;
+  for (const pattern of cityPatterns) {
+    nickname = nickname.replace(pattern, "");
+  }
+  return nickname.trim();
+}
+
+// Fetch MLB game ID (gamePk) from MLB StatsAPI
+export async function fetchMlbGameId(date: string, homeTeamName: string, awayTeamName: string): Promise<{ 
+  gamePk: string; 
+  homeSlug: string; 
+  awaySlug: string;
+  homeTeam: string;
+  awayTeam: string;
+} | null> {
+  try {
+    const [year, month, day] = date.split("-");
+    const mlbDate = `${year}-${month}-${day}`;
+    
+    // MLB StatsAPI schedule endpoint
+    const url = `https://statsapi.mlb.com/api/v1/schedule?date=${mlbDate}&sportId=1`;
+    
+    const response = await fetch(url, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
+    
+    if (!response.ok) {
+      console.log("MLB StatsAPI response not ok:", response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    const dates = data?.dates || [];
+    
+    if (dates.length === 0) return null;
+    
+    const games = dates[0]?.games || [];
+    
+    for (const game of games) {
+      // The API uses team.name for full name (e.g., "Toronto Blue Jays")
+      const gameHomeFull = game.teams?.home?.team?.name || "";
+      const gameAwayFull = game.teams?.away?.team?.name || "";
+      
+      // Extract nicknames for slugs
+      const gameHomeNickname = extractMlbNickname(gameHomeFull);
+      const gameAwayNickname = extractMlbNickname(gameAwayFull);
+      
+      // Check if this game matches the teams we're looking for
+      const homeMatch = teamMatches(homeTeamName, gameHomeNickname, "", gameHomeFull) ||
+                       teamMatches(homeTeamName, gameAwayNickname, "", gameAwayFull);
+      const awayMatch = teamMatches(awayTeamName, gameHomeNickname, "", gameHomeFull) ||
+                       teamMatches(awayTeamName, gameAwayNickname, "", gameAwayFull);
+      
+      // Also check if at least one team matches when only one team is provided
+      const singleTeamMatch = teamMatches(homeTeamName, gameHomeNickname, "", gameHomeFull) ||
+                              teamMatches(homeTeamName, gameAwayNickname, "", gameAwayFull) ||
+                              teamMatches(awayTeamName, gameHomeNickname, "", gameHomeFull) ||
+                              teamMatches(awayTeamName, gameAwayNickname, "", gameAwayFull);
+      
+      if ((homeMatch && awayMatch) || singleTeamMatch) {
+        return {
+          gamePk: String(game.gamePk),
+          homeSlug: slugifyTeamName(gameHomeNickname),
+          awaySlug: slugifyTeamName(gameAwayNickname),
+          homeTeam: gameHomeFull,
+          awayTeam: gameAwayFull,
+        };
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error fetching MLB game ID:", error);
+    return null;
+  }
+}
+
 // Generate direct box score URLs using game IDs
 // Note: ESPN game IDs only work for ESPN URLs. Official league sites use different internal IDs
 // that require their own API calls to fetch
