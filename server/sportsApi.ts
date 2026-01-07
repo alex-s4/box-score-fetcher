@@ -1,5 +1,35 @@
 // Sports API integration for fetching real game IDs
 
+// ESPN to NBA abbreviation mapping (ESPN uses different codes for some teams)
+const ESPN_TO_NBA_ABBR: Record<string, string> = {
+  "NO": "NOP",    // New Orleans Pelicans
+  "NY": "NYK",    // New York Knicks
+  "GS": "GSW",    // Golden State Warriors
+  "SA": "SAS",    // San Antonio Spurs
+  "UTAH": "UTA",  // Utah Jazz
+  "PHX": "PHO",   // Phoenix Suns (sometimes)
+  "BKN": "BKN",   // Brooklyn Nets
+  "WSH": "WAS",   // Washington Wizards
+};
+
+// NBA abbreviation to lowercase for URL construction
+const NBA_TEAM_ABBR: Record<string, string> = {
+  "ATL": "atl", "BOS": "bos", "BKN": "bkn", "CHA": "cha", "CHI": "chi",
+  "CLE": "cle", "DAL": "dal", "DEN": "den", "DET": "det", "GSW": "gsw",
+  "HOU": "hou", "IND": "ind", "LAC": "lac", "LAL": "lal", "MEM": "mem",
+  "MIA": "mia", "MIL": "mil", "MIN": "min", "NOP": "nop", "NYK": "nyk",
+  "OKC": "okc", "ORL": "orl", "PHI": "phi", "PHX": "phx", "POR": "por",
+  "SAC": "sac", "SAS": "sas", "TOR": "tor", "UTA": "uta", "WAS": "was",
+  // ESPN abbreviations mapped to NBA lowercase
+  "NO": "nop", "NY": "nyk", "GS": "gsw", "SA": "sas", "UTAH": "uta",
+  "PHO": "phx", "WSH": "was",
+};
+
+export function getNbaAbbr(espnAbbr: string): string {
+  const upper = espnAbbr.toUpperCase();
+  return NBA_TEAM_ABBR[upper] || espnAbbr.toLowerCase();
+}
+
 interface ESPNGame {
   id: string;
   date: string;
@@ -170,49 +200,88 @@ export async function findGame(teamName: string, date: string, leagues: string[]
   return null;
 }
 
-// Fetch NBA game ID from NBA's CDN scoreboard (more reliable than stats.nba.com)
+// Helper to check if two team abbreviations match (accounting for ESPN/NBA differences)
+function abbrMatches(espnAbbr: string, nbaAbbr: string): boolean {
+  const espnUpper = espnAbbr.toUpperCase();
+  const nbaUpper = nbaAbbr.toUpperCase();
+  
+  // Direct match
+  if (espnUpper === nbaUpper) return true;
+  
+  // Check if ESPN abbr maps to this NBA abbr
+  const mapped = ESPN_TO_NBA_ABBR[espnUpper];
+  if (mapped && mapped === nbaUpper) return true;
+  
+  // Also check reverse mapping (in case NBA uses the ESPN-style abbr)
+  return getNbaAbbr(espnAbbr) === nbaAbbr.toLowerCase();
+}
+
+// Fetch NBA game ID from NBA's scoreboard API for a specific date
 export async function fetchNbaGameId(date: string, homeTeamAbbr: string, awayTeamAbbr: string): Promise<{ gameId: string; awayAbbr: string; homeAbbr: string } | null> {
   try {
-    // NBA CDN scoreboard endpoint for specific date
     const [year, month, day] = date.split("-");
-    const nbaDate = `${year}-${month}-${day}`;
+    const targetDate = `${year}-${month}-${day}`;
     
-    // Use the NBA CDN schedule endpoint
-    const url = `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json`;
-    
-    const response = await fetch(url, {
+    // Try the full schedule endpoint (most reliable for historical/future games)
+    const scheduleUrl = `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json`;
+    const scheduleResponse = await fetch(scheduleUrl, {
       headers: {
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     });
     
-    if (!response.ok) {
-      console.log("NBA CDN response not ok:", response.status);
-      return null;
+    if (scheduleResponse.ok) {
+      const data = await scheduleResponse.json();
+      const gameDates = data?.leagueSchedule?.gameDates || [];
+      
+      for (const gameDate of gameDates) {
+        for (const game of gameDate.games || []) {
+          const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
+          const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
+          const gameDateStr = game.gameDateUTC?.substring(0, 10);
+          
+          // Match by date and teams (using flexible abbreviation matching)
+          if (gameDateStr === targetDate) {
+            const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
+            const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
+            
+            if (homeMatch && awayMatch) {
+              return {
+                gameId: game.gameId,
+                awayAbbr: gameAwayAbbr.toLowerCase(),
+                homeAbbr: gameHomeAbbr.toLowerCase()
+              };
+            }
+          }
+        }
+      }
     }
     
-    const data = await response.json();
+    // Fallback: Try the date-specific scoreboard API (works for recent/live games)
+    const scoreboardUrl = `https://stats.nba.com/stats/scoreboardv3?GameDate=${year}-${month}-${day}&LeagueID=00`;
     
-    // Find games on the specified date
-    const gameDates = data?.leagueSchedule?.gameDates || [];
+    const response = await fetch(scoreboardUrl, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.nba.com/",
+        "Origin": "https://www.nba.com",
+      },
+    });
     
-    const normalizedHome = homeTeamAbbr.toUpperCase();
-    const normalizedAway = awayTeamAbbr.toUpperCase();
-    
-    for (const gameDate of gameDates) {
-      // Check if this is the right date
-      const dateStr = gameDate.gameDate?.substring(0, 10); // Format: "MM/DD/YYYY HH:MM:SS" or similar
+    if (response.ok) {
+      const data = await response.json();
+      const games = data?.scoreboard?.games || [];
       
-      for (const game of gameDate.games || []) {
+      for (const game of games) {
         const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
         const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
-        const gameDateCheck = game.gameDateUTC?.substring(0, 10); // "YYYY-MM-DD"
         
-        // Match by date and teams
-        if (gameDateCheck === nbaDate && 
-            gameHomeAbbr === normalizedHome && 
-            gameAwayAbbr === normalizedAway) {
+        const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
+        const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
+        
+        if (homeMatch && awayMatch) {
           return {
             gameId: game.gameId,
             awayAbbr: gameAwayAbbr.toLowerCase(),

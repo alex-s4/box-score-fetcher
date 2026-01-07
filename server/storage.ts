@@ -116,18 +116,8 @@ export class MemStorage implements IStorage {
             description: `Official NBA box score - ${game.awayTeam} @ ${game.homeTeam}`,
             linkType: "direct"
           });
-        } else {
-          // Fallback to NBA.com games page for that date
-          links.unshift({
-            id: "nba-com-games",
-            provider: "NBA.com Games",
-            providerType: "official",
-            league: "NBA",
-            url: `https://www.nba.com/games?date=${year}-${month}-${day}`,
-            description: `NBA games on ${formatDateForDisplay(query.gameDate)} - find ${game.awayTeam} @ ${game.homeTeam}`,
-            linkType: "search"
-          });
         }
+        // No fallback to games page - only show direct links
         
         // Basketball Reference direct link using date-based URL
         const brDate = `${year}${month}${day}`;
