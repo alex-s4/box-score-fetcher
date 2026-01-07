@@ -73,6 +73,93 @@ const ESPN_SCOREBOARD_URLS: Record<string, string> = {
   mls: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
 };
 
+// ESPN athlete search endpoints
+const ESPN_ATHLETE_SEARCH_URLS: Record<string, string> = {
+  nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/athletes",
+  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/athletes",
+  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/athletes",
+  nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/athletes",
+};
+
+export interface PlayerTeamInfo {
+  playerName: string;
+  teamName: string;
+  teamAbbr: string;
+  league: string;
+}
+
+// Search for a player by name and return their team info
+export async function searchPlayerTeam(playerName: string): Promise<PlayerTeamInfo | null> {
+  if (!playerName || playerName.trim().length < 2) {
+    return null;
+  }
+  
+  const normalizedSearch = playerName.trim().toLowerCase();
+  
+  // Search across multiple leagues in parallel
+  const leagues = ["nba", "mlb", "nfl", "nhl"];
+  
+  const searchPromises = leagues.map(async (league) => {
+    try {
+      const url = `${ESPN_ATHLETE_SEARCH_URLS[league]}?search=${encodeURIComponent(playerName)}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      });
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      const athletes = data?.athletes || [];
+      
+      // Find best matching athlete
+      for (const athlete of athletes) {
+        const fullName = athlete.fullName?.toLowerCase() || "";
+        const displayName = athlete.displayName?.toLowerCase() || "";
+        
+        // Check for match
+        if (fullName.includes(normalizedSearch) || 
+            displayName.includes(normalizedSearch) ||
+            normalizedSearch.includes(fullName) ||
+            normalizedSearch.includes(displayName)) {
+          
+          // Get team info from athlete
+          const team = athlete.team;
+          if (team) {
+            return {
+              playerName: athlete.fullName || athlete.displayName,
+              teamName: team.displayName || team.name || "",
+              teamAbbr: team.abbreviation || "",
+              league: league.toUpperCase(),
+            };
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error searching ${league} athletes:`, error);
+      return null;
+    }
+  });
+  
+  const results = await Promise.all(searchPromises);
+  
+  // Return first successful match
+  for (const result of results) {
+    if (result) {
+      return result;
+    }
+  }
+  
+  return null;
+}
+
 function normalizeTeamName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
