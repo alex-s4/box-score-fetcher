@@ -330,40 +330,78 @@ function abbrMatches(espnAbbr: string, nbaAbbr: string): boolean {
   return getNbaAbbr(espnAbbr) === nbaAbbr.toLowerCase();
 }
 
-// Fetch NBA game ID from NBA's scoreboard API for a specific date
+// Fetch NBA game ID from NBA's CDN scoreboard API
 export async function fetchNbaGameId(date: string, homeTeamAbbr: string, awayTeamAbbr: string): Promise<{ gameId: string; awayAbbr: string; homeAbbr: string } | null> {
   try {
-    const [year, month, day] = date.split("-");
+    // Try the fast CDN endpoint first (works for today's games and recent games)
+    const cdnUrl = `https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json`;
     
-    // Use the date-specific scoreboard API with timeout
-    const scoreboardUrl = `https://stats.nba.com/stats/scoreboardv3?GameDate=${year}-${month}-${day}&LeagueID=00`;
-    
-    const response = await fetchWithTimeout(scoreboardUrl, {
+    const cdnResponse = await fetchWithTimeout(cdnUrl, {
       headers: {
         "Accept": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://www.nba.com/",
-        "Origin": "https://www.nba.com",
       },
     }, 5000);
     
-    if (response.ok) {
-      const data = await response.json();
+    if (cdnResponse.ok) {
+      const data = await cdnResponse.json();
+      const scoreboardDate = data?.scoreboard?.gameDate; // Format: "2026-01-06"
       const games = data?.scoreboard?.games || [];
       
-      for (const game of games) {
-        const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
-        const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
-        
-        const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
-        const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
-        
-        if (homeMatch && awayMatch) {
-          return {
-            gameId: game.gameId,
-            awayAbbr: gameAwayAbbr.toLowerCase(),
-            homeAbbr: gameHomeAbbr.toLowerCase()
-          };
+      // Check if the date matches (CDN only has current day's games)
+      if (scoreboardDate === date) {
+        for (const game of games) {
+          const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
+          const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
+          
+          const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
+          const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
+          
+          if (homeMatch && awayMatch) {
+            return {
+              gameId: game.gameId,
+              awayAbbr: gameAwayAbbr.toLowerCase(),
+              homeAbbr: gameHomeAbbr.toLowerCase()
+            };
+          }
+        }
+      }
+    }
+    
+    // Fallback: Try the schedule API for historical/future dates
+    const [year, month, day] = date.split("-");
+    const scheduleUrl = `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json`;
+    
+    const scheduleResponse = await fetchWithTimeout(scheduleUrl, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    }, 8000);
+    
+    if (scheduleResponse.ok) {
+      const scheduleData = await scheduleResponse.json();
+      const gameDates = scheduleData?.leagueSchedule?.gameDates || [];
+      
+      for (const gameDate of gameDates) {
+        for (const game of gameDate.games || []) {
+          // Check if game date matches (format: "2026-01-06T00:00:00Z")
+          const gameDateStr = game.gameDateUTC?.substring(0, 10);
+          if (gameDateStr !== date) continue;
+          
+          const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
+          const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
+          
+          const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
+          const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
+          
+          if (homeMatch && awayMatch) {
+            return {
+              gameId: game.gameId,
+              awayAbbr: gameAwayAbbr.toLowerCase(),
+              homeAbbr: gameHomeAbbr.toLowerCase()
+            };
+          }
         }
       }
     }
