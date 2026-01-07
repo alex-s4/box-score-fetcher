@@ -3,17 +3,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { 
-  Search, 
-  Calendar, 
-  User, 
-  Users, 
-  Copy, 
-  Check, 
+import {
+  Search,
+  Calendar,
+  User,
+  Users,
+  Copy,
+  Check,
   ExternalLink,
   Trophy,
   Loader2,
-  Info
+  Info,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,16 +21,31 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
-import { searchQuerySchema, type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
+import {
+  searchQuerySchema,
+  type SearchQuery,
+  type SearchResult,
+  type BoxScoreLink,
+} from "@shared/schema";
 
-function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) => void }) {
+function LinkCard({
+  link,
+  onCopy,
+}: {
+  link: BoxScoreLink;
+  onCopy: (url: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const isDirect = link.linkType === "direct";
 
@@ -42,32 +57,46 @@ function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) 
   };
 
   return (
-    <div 
+    <div
       className={cn(
         "flex items-center justify-between gap-4 p-4 rounded-lg hover-elevate active-elevate-2",
-        isDirect ? "bg-green-500/5 border border-green-500/20" : "bg-muted/50"
+        isDirect ? "bg-green-500/5 border border-green-500/20" : "bg-muted/50",
       )}
       data-testid={`link-card-${link.id}`}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className={cn(
-          "flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center border",
-          isDirect ? "bg-green-500/10 border-green-500/30" : "bg-background border-border"
-        )}>
-          <span className={cn(
-            "text-xs font-semibold uppercase",
-            isDirect ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
-          )}>
+        <div
+          className={cn(
+            "flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center border",
+            isDirect
+              ? "bg-green-500/10 border-green-500/30"
+              : "bg-background border-border",
+          )}
+        >
+          <span
+            className={cn(
+              "text-xs font-semibold uppercase",
+              isDirect
+                ? "text-green-600 dark:text-green-400"
+                : "text-muted-foreground",
+            )}
+          >
             {link.league}
           </span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium text-sm truncate" data-testid={`text-provider-${link.id}`}>
+            <p
+              className="font-medium text-sm truncate"
+              data-testid={`text-provider-${link.id}`}
+            >
               {link.provider}
             </p>
             {isDirect && (
-              <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-700 dark:text-green-300">
+              <Badge
+                variant="secondary"
+                className="text-xs bg-green-500/20 text-green-700 dark:text-green-300"
+              >
                 Direct Link
               </Badge>
             )}
@@ -85,7 +114,11 @@ function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) 
           data-testid={`button-copy-${link.id}`}
           aria-label="Copy link"
         >
-          {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+          {copied ? (
+            <Check className="h-4 w-4 text-green-500" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
         </Button>
         <Button
           size="icon"
@@ -93,7 +126,12 @@ function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) 
           asChild
           data-testid={`button-open-${link.id}`}
         >
-          <a href={link.url} target="_blank" rel="noopener noreferrer" aria-label="Open in new tab">
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open in new tab"
+          >
             <ExternalLink className="h-4 w-4" />
           </a>
         </Button>
@@ -102,25 +140,41 @@ function LinkCard({ link, onCopy }: { link: BoxScoreLink; onCopy: (url: string) 
   );
 }
 
-function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url: string) => void }) {
-  const officialLinks = result.links.filter(l => l.providerType === "official");
-  const thirdPartyLinks = result.links.filter(l => l.providerType === "third-party");
+function ResultsSection({
+  result,
+  onCopy,
+}: {
+  result: SearchResult;
+  onCopy: (url: string) => void;
+}) {
+  const officialLinks = result.links.filter(
+    (l) => l.providerType === "official",
+  );
+  const thirdPartyLinks = result.links.filter(
+    (l) => l.providerType === "third-party",
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="text-center pb-4 border-b border-border">
         <p className="text-sm text-muted-foreground">Showing results for</p>
-        <h2 className="text-xl font-semibold mt-1" data-testid="text-match-info">
-          {result.matchInfo.playerName && result.matchInfo.teamName 
+        <h2
+          className="text-xl font-semibold mt-1"
+          data-testid="text-match-info"
+        >
+          {result.matchInfo.playerName && result.matchInfo.teamName
             ? `${result.matchInfo.playerName} - ${result.matchInfo.teamName}`
             : result.matchInfo.teamName || result.matchInfo.playerName}
         </h2>
-        <p className="text-sm text-muted-foreground mt-1" data-testid="text-game-date">
+        <p
+          className="text-sm text-muted-foreground mt-1"
+          data-testid="text-game-date"
+        >
           {result.matchInfo.formattedDate}
         </p>
       </div>
 
-      {result.links.some(l => l.linkType === "direct") ? (
+      {result.links.some((l) => l.linkType === "direct") ? (
         <div className="flex items-start gap-3 p-3 rounded-lg bg-green-500/10 text-sm border border-green-500/20">
           <Check className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
           <p className="text-green-700 dark:text-green-300">
@@ -131,7 +185,8 @@ function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url
         <div className="flex items-start gap-3 p-3 rounded-lg bg-accent/50 text-sm">
           <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
           <p className="text-muted-foreground">
-            No game found for this date. Search links are provided to help you find the box score.
+            No game found for this date. Search links are provided to help you
+            find the box score.
           </p>
         </div>
       )}
@@ -148,7 +203,7 @@ function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url
             </Badge>
           </div>
           <div className="space-y-2">
-            {officialLinks.map(link => (
+            {officialLinks.map((link) => (
               <LinkCard key={link.id} link={link} onCopy={onCopy} />
             ))}
           </div>
@@ -167,7 +222,7 @@ function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url
             </Badge>
           </div>
           <div className="space-y-2">
-            {thirdPartyLinks.map(link => (
+            {thirdPartyLinks.map((link) => (
               <LinkCard key={link.id} link={link} onCopy={onCopy} />
             ))}
           </div>
@@ -185,11 +240,11 @@ function LoadingSkeleton() {
         <Skeleton className="h-6 w-48 mx-auto mt-2" />
         <Skeleton className="h-4 w-24 mx-auto mt-2" />
       </div>
-      {[1, 2].map(section => (
+      {[1, 2].map((section) => (
         <div key={section}>
           <Skeleton className="h-4 w-40 mb-3" />
           <div className="space-y-2">
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-16 w-full rounded-lg" />
             ))}
           </div>
@@ -207,7 +262,8 @@ function EmptyState() {
       </div>
       <h3 className="font-semibold text-lg mb-2">Find Box Score Links</h3>
       <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-        Enter a team name (or player name) and game date to generate links to box scores from official league sites and sports providers.
+        Enter a team name (or player name) and game date to generate links to
+        box scores from official league sites and sports providers.
       </p>
     </div>
   );
@@ -230,7 +286,7 @@ export default function Home() {
   const searchMutation = useMutation({
     mutationFn: async (data: SearchQuery) => {
       const response = await apiRequest("POST", "/api/search", data);
-      return await response.json() as SearchResult;
+      return (await response.json()) as SearchResult;
     },
     onSuccess: (data) => {
       setResult(data);
@@ -238,7 +294,8 @@ export default function Home() {
     onError: (error) => {
       toast({
         title: "Search failed",
-        description: error instanceof Error ? error.message : "An error occurred",
+        description:
+          error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
     },
@@ -270,7 +327,9 @@ export default function Home() {
             <div className="w-9 h-9 rounded-md bg-primary flex items-center justify-center">
               <Trophy className="h-5 w-5 text-primary-foreground" />
             </div>
-            <h1 className="font-bold text-xl hidden sm:block">Box Score Finder</h1>
+            <h1 className="font-bold text-xl hidden sm:block">
+              Box Score Finder
+            </h1>
           </div>
           <ThemeToggle />
         </div>
@@ -282,7 +341,8 @@ export default function Home() {
             Find Any Box Score
           </h2>
           <p className="text-muted-foreground text-base md:text-lg max-w-xl mx-auto">
-            Generate search links to find game stats from official league sites and popular sports providers.
+            Generate search links to find game stats from official league sites
+            and third-party scoring providers.
           </p>
         </div>
 
@@ -297,10 +357,12 @@ export default function Home() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="playerName" className="flex items-center gap-2">
+                  <Label
+                    htmlFor="playerName"
+                    className="flex items-center gap-2"
+                  >
                     <User className="h-4 w-4 text-muted-foreground" />
                     Player Name
-                    <span className="text-xs text-muted-foreground font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="playerName"
@@ -319,7 +381,6 @@ export default function Home() {
                   <Label htmlFor="teamName" className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     Team Name
-                    <span className="text-xs text-muted-foreground font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="teamName"
@@ -345,7 +406,7 @@ export default function Home() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal",
-                          !date && "text-muted-foreground"
+                          !date && "text-muted-foreground",
                         )}
                         data-testid="button-date-picker"
                       >
@@ -407,10 +468,11 @@ export default function Home() {
 
         <footer className="mt-12 pt-6 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            Supported leagues: NBA, MLB, NFL, NHL, MLS
+            Supported leagues: NBA, MLB, (unreliable: NFL, NHL, MLS)
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Links generated for ESPN, official league sites, SofaScore, Yahoo Sports, and more.
+            Links generated for ESPN, official league sites, SofaScore, and
+            more.
           </p>
         </footer>
       </main>
