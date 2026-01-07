@@ -1,5 +1,5 @@
 import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
-import { findGame, generateDirectUrls, type GameInfo } from "./sportsApi";
+import { findGame, generateDirectUrls, fetchNbaGameId, type GameInfo } from "./sportsApi";
 
 export interface IStorage {
   generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
@@ -97,6 +97,36 @@ export class MemStorage implements IStorage {
         description: url.description,
         linkType: "direct" as const
       }));
+      
+      // For NBA games, try to fetch NBA.com game ID and add official link
+      if (game.league === "NBA") {
+        const nbaGameId = await fetchNbaGameId(query.gameDate, game.homeTeamAbbr, game.awayTeamAbbr);
+        
+        if (nbaGameId) {
+          // NBA.com URL format: https://www.nba.com/game/{away}-vs-{home}-{gameId}/box-score
+          const nbaSlug = `${game.awayTeamAbbr.toLowerCase()}-vs-${game.homeTeamAbbr.toLowerCase()}-${nbaGameId}`;
+          links.unshift({
+            id: "nba-com-boxscore",
+            provider: "NBA.com",
+            providerType: "official",
+            league: "NBA",
+            url: `https://www.nba.com/game/${nbaSlug}/box-score`,
+            description: `Official NBA box score - ${game.awayTeam} @ ${game.homeTeam}`,
+            linkType: "direct"
+          });
+        } else {
+          // Fallback to NBA.com search if we can't get the game ID
+          links.push({
+            id: "nba-com-search",
+            provider: "NBA.com (Search)",
+            providerType: "official",
+            league: "NBA",
+            url: `https://www.nba.com/search?q=${encodeURIComponent(query.teamName + " " + formatDateForDisplay(query.gameDate))}`,
+            description: "Search NBA.com for box score",
+            linkType: "search"
+          });
+        }
+      }
       
       // Add some search fallbacks too
       const displayDate = formatDateForDisplay(query.gameDate);
