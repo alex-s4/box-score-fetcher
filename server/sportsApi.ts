@@ -47,16 +47,44 @@ function normalizeTeamName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+// Extract just the team nickname (e.g., "Lakers" from "Los Angeles Lakers")
+function getTeamNickname(displayName: string): string {
+  const parts = displayName.split(" ");
+  // Usually the last word is the nickname, but some teams have multi-word nicknames
+  const twoWordTeams = ["trail blazers", "blue jays", "red sox", "white sox", "maple leafs", "golden knights"];
+  const lastTwo = parts.slice(-2).join(" ").toLowerCase();
+  if (twoWordTeams.includes(lastTwo)) {
+    return normalizeTeamName(lastTwo);
+  }
+  return normalizeTeamName(parts[parts.length - 1] || displayName);
+}
+
 function teamMatches(searchTeam: string, teamName: string, teamAbbr: string, displayName: string): boolean {
   const search = normalizeTeamName(searchTeam);
-  return (
-    normalizeTeamName(teamName).includes(search) ||
-    normalizeTeamName(displayName).includes(search) ||
-    search.includes(normalizeTeamName(teamName)) ||
-    search.includes(normalizeTeamName(displayName)) ||
-    normalizeTeamName(teamAbbr) === search ||
-    search.includes(normalizeTeamName(teamAbbr))
-  );
+  const normalizedTeamName = normalizeTeamName(teamName);
+  const normalizedDisplayName = normalizeTeamName(displayName);
+  const normalizedAbbr = normalizeTeamName(teamAbbr);
+  const nickname = getTeamNickname(displayName);
+  
+  // Exact match on abbreviation (e.g., "LAL" matches Lakers)
+  if (normalizedAbbr === search) return true;
+  
+  // Search term matches nickname exactly (e.g., "lakers" matches "Lakers")
+  if (search === nickname) return true;
+  
+  // Full team name contains search term or vice versa
+  if (normalizedDisplayName === search || normalizedTeamName === search) return true;
+  
+  // Search term contains the full team name
+  if (search.includes(normalizedDisplayName) || search.includes(normalizedTeamName)) return true;
+  
+  // Team name contains the search term (but search must be at least 4 chars to avoid false positives)
+  if (search.length >= 4 && normalizedDisplayName.includes(search)) return true;
+  
+  // Search contains the nickname (e.g., "los angeles lakers" contains "lakers")
+  if (nickname.length >= 4 && search.includes(nickname)) return true;
+  
+  return false;
 }
 
 export async function fetchGamesByDate(league: string, date: string): Promise<GameInfo[]> {
