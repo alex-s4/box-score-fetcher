@@ -4,6 +4,8 @@
 
 A sports utility web application that generates box score links for professional sports games. Users enter a player name, team name, and game date, and the app generates direct URLs to box scores from official league sites (NBA, MLB, NFL, NHL, MLS) and third-party providers like ESPN and Basketball Reference. The application prioritizes speed, clarity, and ease of use with a function-first design approach.
 
+**Key Feature**: Player-only searches are supported - entering just a player name automatically resolves their current team using ESPN's athlete API, then finds games for that team on the specified date.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
