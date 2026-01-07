@@ -1,5 +1,26 @@
 // Sports API integration for fetching real game IDs
 
+// Helper function for fetch with timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 // ESPN to NBA abbreviation mapping (ESPN uses different codes for some teams)
 const ESPN_TO_NBA_ABBR: Record<string, string> = {
   "NO": "NOP",    // New Orleans Pelicans
@@ -73,12 +94,12 @@ const ESPN_SCOREBOARD_URLS: Record<string, string> = {
   mls: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
 };
 
-// ESPN athlete search endpoints
-const ESPN_ATHLETE_SEARCH_URLS: Record<string, string> = {
-  nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/athletes",
-  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/athletes",
-  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/athletes",
-  nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/athletes",
+// ESPN athlete detail endpoints (with team info)
+const ESPN_ATHLETE_DETAIL_URLS: Record<string, string> = {
+  nba: "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes",
+  mlb: "https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes",
+  nfl: "https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes",
+  nhl: "https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes",
 };
 
 export interface PlayerTeamInfo {
@@ -96,68 +117,74 @@ export async function searchPlayerTeam(playerName: string): Promise<PlayerTeamIn
   
   const normalizedSearch = playerName.trim().toLowerCase();
   
-  // Search across multiple leagues in parallel
-  const leagues = ["nba", "mlb", "nfl", "nhl"];
-  
-  const searchPromises = leagues.map(async (league) => {
-    try {
-      const url = `${ESPN_ATHLETE_SEARCH_URLS[league]}?search=${encodeURIComponent(playerName)}`;
+  try {
+    // Step 1: Search for player using ESPN common search API
+    const searchUrl = `https://site.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(playerName)}&type=player&limit=5`;
+    
+    const searchResponse = await fetchWithTimeout(searchUrl, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    }, 5000);
+    
+    if (!searchResponse.ok) {
+      console.log("ESPN search response not ok:", searchResponse.status);
+      return null;
+    }
+    
+    const searchData = await searchResponse.json();
+    const players = searchData?.items || [];
+    
+    // Find best matching player
+    for (const player of players) {
+      const displayName = player.displayName?.toLowerCase() || "";
+      const shortName = player.shortName?.toLowerCase() || "";
       
-      const response = await fetch(url, {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      });
-      
-      if (!response.ok) {
-        return null;
-      }
-      
-      const data = await response.json();
-      const athletes = data?.athletes || [];
-      
-      // Find best matching athlete
-      for (const athlete of athletes) {
-        const fullName = athlete.fullName?.toLowerCase() || "";
-        const displayName = athlete.displayName?.toLowerCase() || "";
+      // Check for match
+      if (displayName.includes(normalizedSearch) || 
+          normalizedSearch.includes(displayName) ||
+          shortName.includes(normalizedSearch.split(" ").pop() || "")) {
         
-        // Check for match
-        if (fullName.includes(normalizedSearch) || 
-            displayName.includes(normalizedSearch) ||
-            normalizedSearch.includes(fullName) ||
-            normalizedSearch.includes(displayName)) {
-          
-          // Get team info from athlete
-          const team = athlete.team;
-          if (team) {
-            return {
-              playerName: athlete.fullName || athlete.displayName,
-              teamName: team.displayName || team.name || "",
-              teamAbbr: team.abbreviation || "",
-              league: league.toUpperCase(),
-            };
-          }
+        const playerId = player.id;
+        const league = player.league?.toLowerCase();
+        const sport = player.sport?.toLowerCase();
+        
+        if (!playerId || !league) continue;
+        
+        // Step 2: Fetch athlete details to get team info
+        const detailUrl = ESPN_ATHLETE_DETAIL_URLS[league];
+        if (!detailUrl) continue;
+        
+        const detailResponse = await fetchWithTimeout(`${detailUrl}/${playerId}`, {
+          headers: {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        }, 5000);
+        
+        if (!detailResponse.ok) continue;
+        
+        const detailData = await detailResponse.json();
+        const athlete = detailData?.athlete;
+        const team = athlete?.team;
+        
+        if (team) {
+          return {
+            playerName: athlete.displayName || athlete.fullName || player.displayName,
+            teamName: team.displayName || team.name || "",
+            teamAbbr: team.abbreviation || "",
+            league: league.toUpperCase(),
+          };
         }
       }
-      
-      return null;
-    } catch (error) {
-      console.error(`Error searching ${league} athletes:`, error);
-      return null;
     }
-  });
-  
-  const results = await Promise.all(searchPromises);
-  
-  // Return first successful match
-  for (const result of results) {
-    if (result) {
-      return result;
-    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error searching for player:", error);
+    return null;
   }
-  
-  return null;
 }
 
 function normalizeTeamName(name: string): string {
@@ -307,55 +334,18 @@ function abbrMatches(espnAbbr: string, nbaAbbr: string): boolean {
 export async function fetchNbaGameId(date: string, homeTeamAbbr: string, awayTeamAbbr: string): Promise<{ gameId: string; awayAbbr: string; homeAbbr: string } | null> {
   try {
     const [year, month, day] = date.split("-");
-    const targetDate = `${year}-${month}-${day}`;
     
-    // Try the full schedule endpoint (most reliable for historical/future games)
-    const scheduleUrl = `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json`;
-    const scheduleResponse = await fetch(scheduleUrl, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
-    
-    if (scheduleResponse.ok) {
-      const data = await scheduleResponse.json();
-      const gameDates = data?.leagueSchedule?.gameDates || [];
-      
-      for (const gameDate of gameDates) {
-        for (const game of gameDate.games || []) {
-          const gameHomeAbbr = game.homeTeam?.teamTricode?.toUpperCase();
-          const gameAwayAbbr = game.awayTeam?.teamTricode?.toUpperCase();
-          const gameDateStr = game.gameDateUTC?.substring(0, 10);
-          
-          // Match by date and teams (using flexible abbreviation matching)
-          if (gameDateStr === targetDate) {
-            const homeMatch = abbrMatches(homeTeamAbbr, gameHomeAbbr) || abbrMatches(homeTeamAbbr, gameAwayAbbr);
-            const awayMatch = abbrMatches(awayTeamAbbr, gameAwayAbbr) || abbrMatches(awayTeamAbbr, gameHomeAbbr);
-            
-            if (homeMatch && awayMatch) {
-              return {
-                gameId: game.gameId,
-                awayAbbr: gameAwayAbbr.toLowerCase(),
-                homeAbbr: gameHomeAbbr.toLowerCase()
-              };
-            }
-          }
-        }
-      }
-    }
-    
-    // Fallback: Try the date-specific scoreboard API (works for recent/live games)
+    // Use the date-specific scoreboard API with timeout
     const scoreboardUrl = `https://stats.nba.com/stats/scoreboardv3?GameDate=${year}-${month}-${day}&LeagueID=00`;
     
-    const response = await fetch(scoreboardUrl, {
+    const response = await fetchWithTimeout(scoreboardUrl, {
       headers: {
         "Accept": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://www.nba.com/",
         "Origin": "https://www.nba.com",
       },
-    });
+    }, 5000);
     
     if (response.ok) {
       const data = await response.json();
