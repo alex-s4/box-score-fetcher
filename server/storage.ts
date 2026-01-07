@@ -1,37 +1,208 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
+}
+
+function formatDateForDisplay(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function detectLeague(teamName: string): string[] {
+  const teamLower = teamName.toLowerCase();
+  const leagues: string[] = [];
+  
+  // NBA teams
+  const nbaTeams = ["lakers", "warriors", "celtics", "heat", "bulls", "knicks", "nets", "76ers", "suns", "mavericks", "bucks", "clippers", "nuggets", "grizzlies", "pelicans", "hawks", "hornets", "magic", "pistons", "pacers", "cavaliers", "raptors", "wizards", "timberwolves", "thunder", "blazers", "jazz", "kings", "spurs", "rockets"];
+  if (nbaTeams.some(t => teamLower.includes(t))) leagues.push("nba");
+  
+  // MLB teams
+  const mlbTeams = ["yankees", "dodgers", "red sox", "cubs", "giants", "astros", "braves", "phillies", "mets", "cardinals", "padres", "mariners", "rangers", "twins", "guardians", "orioles", "rays", "blue jays", "white sox", "royals", "tigers", "angels", "athletics", "brewers", "reds", "pirates", "rockies", "diamondbacks", "nationals", "marlins"];
+  if (mlbTeams.some(t => teamLower.includes(t))) leagues.push("mlb");
+  
+  // NFL teams
+  const nflTeams = ["cowboys", "patriots", "packers", "chiefs", "49ers", "eagles", "bills", "dolphins", "jets", "ravens", "steelers", "bengals", "browns", "titans", "colts", "texans", "jaguars", "broncos", "raiders", "chargers", "seahawks", "rams", "cardinals", "falcons", "panthers", "saints", "buccaneers", "bears", "lions", "vikings", "commanders"];
+  if (nflTeams.some(t => teamLower.includes(t))) leagues.push("nfl");
+  
+  // NHL teams
+  const nhlTeams = ["maple leafs", "canadiens", "bruins", "rangers", "blackhawks", "penguins", "golden knights", "avalanche", "oilers", "flames", "canucks", "kraken", "kings", "sharks", "ducks", "coyotes", "stars", "blues", "wild", "predators", "jets", "lightning", "panthers", "hurricanes", "capitals", "flyers", "devils", "islanders", "sabres", "senators", "red wings", "blue jackets"];
+  if (nhlTeams.some(t => teamLower.includes(t))) leagues.push("nhl");
+  
+  // MLS teams
+  const mlsTeams = ["galaxy", "inter miami", "atlanta united", "sounders", "lafc", "timbers", "whitecaps", "earthquakes", "fc dallas", "dynamo", "sporting kc", "minnesota united", "real salt lake", "colorado rapids", "austin fc", "nashville sc", "charlotte fc", "dc united", "new york red bulls", "nycfc", "new england revolution", "philadelphia union", "columbus crew", "chicago fire", "cf montreal", "toronto fc", "orlando city", "cincinnati"];
+  if (mlsTeams.some(t => teamLower.includes(t))) leagues.push("mls");
+  
+  // Default to all major leagues if no specific match
+  if (leagues.length === 0) {
+    leagues.push("nba", "mlb", "nfl", "nhl");
+  }
+  
+  return leagues;
+}
+
+function generateLinks(query: SearchQuery, leagues: string[]): BoxScoreLink[] {
+  const links: BoxScoreLink[] = [];
+  const displayDate = formatDateForDisplay(query.gameDate);
+  const searchQuery = encodeURIComponent(`${query.teamName} ${query.playerName} ${displayDate} box score`);
+  const teamQuery = encodeURIComponent(`${query.teamName} ${displayDate}`);
+  
+  leagues.forEach(league => {
+    const leagueUpper = league.toUpperCase();
+    const leagueSearchQuery = encodeURIComponent(`${query.teamName} ${displayDate} box score`);
+    
+    // Official league site search pages - these work reliably
+    switch (league) {
+      case "nba":
+        links.push({
+          id: `nba-official`,
+          provider: "NBA.com",
+          providerType: "official",
+          league: "NBA",
+          url: `https://www.nba.com/search?filters=&q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
+          description: "Search NBA.com for box score and game stats",
+          linkType: "search"
+        });
+        break;
+      case "mlb":
+        links.push({
+          id: `mlb-official`,
+          provider: "MLB.com",
+          providerType: "official",
+          league: "MLB",
+          url: `https://www.mlb.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate + " box score")}`,
+          description: "Search MLB.com for Gameday and stats",
+          linkType: "search"
+        });
+        break;
+      case "nfl":
+        links.push({
+          id: `nfl-official`,
+          provider: "NFL.com",
+          providerType: "official",
+          league: "NFL",
+          url: `https://www.nfl.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
+          description: "Search NFL.com for game center and stats",
+          linkType: "search"
+        });
+        break;
+      case "nhl":
+        links.push({
+          id: `nhl-official`,
+          provider: "NHL.com",
+          providerType: "official",
+          league: "NHL",
+          url: `https://www.nhl.com/search?q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
+          description: "Search NHL.com for game center",
+          linkType: "search"
+        });
+        break;
+      case "mls":
+        links.push({
+          id: `mls-official`,
+          provider: "MLSsoccer.com",
+          providerType: "official",
+          league: "MLS",
+          url: `https://www.mlssoccer.com/search/#q=${encodeURIComponent(query.teamName + " " + displayDate)}`,
+          description: "Search MLS for match results",
+          linkType: "search"
+        });
+        break;
+    }
+    
+    // ESPN search - reliable third party
+    links.push({
+      id: `espn-${league}`,
+      provider: "ESPN",
+      providerType: "third-party",
+      league: leagueUpper,
+      url: `https://www.espn.com/search/_/q/${encodeURIComponent(query.teamName + " " + displayDate + " " + leagueUpper)}`,
+      description: `Search ESPN for ${leagueUpper} box score and recap`,
+      linkType: "search"
+    });
+  });
+  
+  // Yahoo Sports search
+  links.push({
+    id: `yahoo-sports`,
+    provider: "Yahoo Sports",
+    providerType: "third-party",
+    league: leagues[0]?.toUpperCase() || "ALL",
+    url: `https://sports.yahoo.com/search?q=${searchQuery}`,
+    description: "Search Yahoo Sports for game summary",
+    linkType: "search"
+  });
+  
+  // CBS Sports search
+  links.push({
+    id: `cbs-sports`,
+    provider: "CBS Sports",
+    providerType: "third-party",
+    league: leagues[0]?.toUpperCase() || "ALL",
+    url: `https://www.cbssports.com/search/?q=${searchQuery}`,
+    description: "Search CBS Sports for box score",
+    linkType: "search"
+  });
+  
+  // SofaScore search - reliable for all sports
+  links.push({
+    id: `sofascore`,
+    provider: "SofaScore",
+    providerType: "third-party",
+    league: leagues[0]?.toUpperCase() || "ALL",
+    url: `https://www.sofascore.com/search?q=${encodeURIComponent(query.teamName)}`,
+    description: "Search SofaScore for detailed match statistics",
+    linkType: "search"
+  });
+  
+  // FlashScore search
+  links.push({
+    id: `flashscore`,
+    provider: "FlashScore",
+    providerType: "third-party",
+    league: leagues[0]?.toUpperCase() || "ALL",
+    url: `https://www.flashscore.com/search/?q=${encodeURIComponent(query.teamName)}`,
+    description: "Search FlashScore for live scores and results",
+    linkType: "search"
+  });
+  
+  // Google search as reliable fallback
+  links.push({
+    id: `google-search`,
+    provider: "Google Search",
+    providerType: "third-party",
+    league: leagues[0]?.toUpperCase() || "ALL",
+    url: `https://www.google.com/search?q=${searchQuery}`,
+    description: "Search Google for box score results",
+    linkType: "search"
+  });
+  
+  return links;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult> {
+    const leagues = detectLeague(query.teamName);
+    const links = generateLinks(query, leagues);
+    
+    const gameDate = new Date(query.gameDate);
+    const formattedDate = gameDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    });
+    
+    return {
+      query,
+      links,
+      matchInfo: {
+        playerName: query.playerName,
+        teamName: query.teamName,
+        gameDate: query.gameDate,
+        formattedDate
+      }
+    };
   }
 }
 
