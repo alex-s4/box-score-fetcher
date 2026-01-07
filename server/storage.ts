@@ -45,7 +45,8 @@ function detectLeague(teamName: string): string[] {
 function generateFallbackLinks(query: SearchQuery, leagues: string[]): BoxScoreLink[] {
   const links: BoxScoreLink[] = [];
   const displayDate = formatDateForDisplay(query.gameDate);
-  const searchQuery = encodeURIComponent(`${query.teamName} ${query.playerName} ${displayDate} box score`);
+  const searchTerm = query.teamName || query.playerName || "";
+  const searchQuery = encodeURIComponent(`${query.teamName} ${query.playerName} ${displayDate} box score`.trim());
   
   leagues.forEach(league => {
     const leagueUpper = league.toUpperCase();
@@ -56,7 +57,7 @@ function generateFallbackLinks(query: SearchQuery, leagues: string[]): BoxScoreL
       provider: "ESPN (Search)",
       providerType: "third-party",
       league: leagueUpper,
-      url: `https://www.espn.com/search/_/q/${encodeURIComponent(query.teamName + " " + displayDate + " " + leagueUpper)}`,
+      url: `https://www.espn.com/search/_/q/${encodeURIComponent(`${searchTerm} ${displayDate} ${leagueUpper}`.trim())}`,
       description: `Search ESPN for ${leagueUpper} box score`,
       linkType: "search"
     });
@@ -78,10 +79,12 @@ function generateFallbackLinks(query: SearchQuery, leagues: string[]): BoxScoreL
 
 export class MemStorage implements IStorage {
   async generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult> {
-    const leagues = detectLeague(query.teamName);
+    // Use teamName to detect league and find game; fall back to playerName for search terms
+    const searchTerm = query.teamName || query.playerName || "";
+    const leagues = detectLeague(searchTerm);
     
-    // Try to find the game using sports APIs
-    const game = await findGame(query.teamName, query.gameDate, leagues);
+    // Try to find the game using sports APIs (only works if teamName is provided)
+    const game = query.teamName ? await findGame(query.teamName, query.gameDate, leagues) : null;
     
     let links: BoxScoreLink[] = [];
     

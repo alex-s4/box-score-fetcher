@@ -111,7 +111,9 @@ function ResultsSection({ result, onCopy }: { result: SearchResult; onCopy: (url
       <div className="text-center pb-4 border-b border-border">
         <p className="text-sm text-muted-foreground">Showing results for</p>
         <h2 className="text-xl font-semibold mt-1" data-testid="text-match-info">
-          {result.matchInfo.playerName} - {result.matchInfo.teamName}
+          {result.matchInfo.playerName && result.matchInfo.teamName 
+            ? `${result.matchInfo.playerName} - ${result.matchInfo.teamName}`
+            : result.matchInfo.teamName || result.matchInfo.playerName}
         </h2>
         <p className="text-sm text-muted-foreground mt-1" data-testid="text-game-date">
           {result.matchInfo.formattedDate}
@@ -205,7 +207,7 @@ function EmptyState() {
       </div>
       <h3 className="font-semibold text-lg mb-2">Find Box Score Links</h3>
       <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-        Enter a player name, team, and game date to generate search links that help you find box scores from official league sites and sports providers.
+        Enter a team name (or player name) and game date to generate links to box scores from official league sites and sports providers.
       </p>
     </div>
   );
@@ -298,6 +300,7 @@ export default function Home() {
                   <Label htmlFor="playerName" className="flex items-center gap-2">
                     <User className="h-4 w-4 text-muted-foreground" />
                     Player Name
+                    <span className="text-xs text-muted-foreground font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="playerName"
@@ -316,6 +319,7 @@ export default function Home() {
                   <Label htmlFor="teamName" className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     Team Name
+                    <span className="text-xs text-muted-foreground font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="teamName"

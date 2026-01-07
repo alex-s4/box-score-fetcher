@@ -1,11 +1,14 @@
 import { z } from "zod";
 
-// Search query schema
+// Search query schema - requires either playerName OR teamName (or both), plus gameDate
 export const searchQuerySchema = z.object({
-  playerName: z.string().min(1, "Player name is required"),
-  teamName: z.string().min(1, "Team name is required"),
+  playerName: z.string().optional().default(""),
+  teamName: z.string().optional().default(""),
   gameDate: z.string().min(1, "Game date is required"),
-});
+}).refine(
+  (data) => data.playerName.trim().length > 0 || data.teamName.trim().length > 0,
+  { message: "Either player name or team name is required", path: ["teamName"] }
+);
 
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 
