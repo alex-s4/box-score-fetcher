@@ -1,5 +1,5 @@
 import { type SearchQuery, type SearchResult, type BoxScoreLink } from "@shared/schema";
-import { findGame, generateDirectUrls, type GameInfo } from "./sportsApi";
+import { findGame, generateDirectUrls, fetchNbaGameId, type GameInfo } from "./sportsApi";
 
 export interface IStorage {
   generateBoxScoreLinks(query: SearchQuery): Promise<SearchResult>;
@@ -100,20 +100,34 @@ export class MemStorage implements IStorage {
       
       // For NBA games, add NBA.com links
       if (game.league === "NBA") {
-        // NBA.com games page with team filter - more reliable than search
-        const displayDate = formatDateForDisplay(query.gameDate);
         const [year, month, day] = query.gameDate.split("-");
         
-        // NBA.com schedule page for the specific date
-        links.unshift({
-          id: "nba-com-games",
-          provider: "NBA.com Games",
-          providerType: "official",
-          league: "NBA",
-          url: `https://www.nba.com/games?date=${year}-${month}-${day}`,
-          description: `NBA games on ${displayDate} - find ${game.awayTeam} @ ${game.homeTeam}`,
-          linkType: "direct"
-        });
+        // Try to fetch NBA game ID for direct box score link
+        const nbaGame = await fetchNbaGameId(query.gameDate, game.homeTeamAbbr, game.awayTeamAbbr);
+        
+        if (nbaGame) {
+          // NBA.com direct box score URL format: https://www.nba.com/game/{away}-vs-{home}-{gameId}/box-score
+          links.unshift({
+            id: "nba-com-boxscore",
+            provider: "NBA.com",
+            providerType: "official",
+            league: "NBA",
+            url: `https://www.nba.com/game/${nbaGame.awayAbbr}-vs-${nbaGame.homeAbbr}-${nbaGame.gameId}/box-score`,
+            description: `Official NBA box score - ${game.awayTeam} @ ${game.homeTeam}`,
+            linkType: "direct"
+          });
+        } else {
+          // Fallback to NBA.com games page for that date
+          links.unshift({
+            id: "nba-com-games",
+            provider: "NBA.com Games",
+            providerType: "official",
+            league: "NBA",
+            url: `https://www.nba.com/games?date=${year}-${month}-${day}`,
+            description: `NBA games on ${formatDateForDisplay(query.gameDate)} - find ${game.awayTeam} @ ${game.homeTeam}`,
+            linkType: "search"
+          });
+        }
         
         // Basketball Reference direct link using date-based URL
         const brDate = `${year}${month}${day}`;
