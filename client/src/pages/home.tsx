@@ -90,7 +90,7 @@ function LinkCard({
               className="font-medium text-sm truncate"
               data-testid={`text-provider-${link.id}`}
             >
-              {link.provider}
+              {link.description}
             </p>
             {isDirect && (
               <Badge
@@ -101,9 +101,7 @@ function LinkCard({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">
-            {link.description}
-          </p>
+          <p className="text-xs text-muted-foreground truncate">{link.url}</p>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -324,11 +322,9 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-4xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-md bg-primary flex items-center justify-center">
-              <Trophy className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <h1 className="font-bold text-xl hidden sm:block">
-              Box Score Finder
+            <h1 className="font-extrabold md:text-5xl text-4xl tracking-tight uppercase italic hidden sm:block">
+              BOX SCORE
+              <span className="text-primary ml-2">FETCHER</span>
             </h1>
           </div>
           <ThemeToggle />
@@ -341,8 +337,8 @@ export default function Home() {
             Find Any Box Score
           </h2>
           <p className="text-muted-foreground text-base md:text-lg max-w-xl mx-auto">
-            Generate search links to find game stats from official league sites
-            and third-party scoring providers.
+            Generate links to find box scores from official league and
+            third-party scoring providers.
           </p>
         </div>
 
@@ -366,7 +362,7 @@ export default function Home() {
                   </Label>
                   <Input
                     id="playerName"
-                    placeholder="e.g., LeBron James"
+                    placeholder="(e.g., LeBron James)"
                     {...form.register("playerName")}
                     data-testid="input-player-name"
                   />
@@ -384,7 +380,7 @@ export default function Home() {
                   </Label>
                   <Input
                     id="teamName"
-                    placeholder="e.g., Los Angeles Lakers"
+                    placeholder="(e.g., Los Angeles Lakers)"
                     {...form.register("teamName")}
                     data-testid="input-team-name"
                   />
@@ -398,7 +394,7 @@ export default function Home() {
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                    Game Date
+                    Game Date (ET)
                   </Label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -468,11 +464,11 @@ export default function Home() {
 
         <footer className="mt-12 pt-6 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            Supported leagues: NBA, MLB, (unreliable: NFL, NHL, MLS)
+            Links generated for official league sites*, ESPN, SofaScore, and
+            more.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Links generated for ESPN, official league sites, SofaScore, and
-            more.
+            * - supported leagues: NBA, MLB
           </p>
         </footer>
       </main>
